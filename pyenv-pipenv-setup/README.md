@@ -63,12 +63,29 @@ exit                            # Deactivate environment
 # In Pipfile
 [packages]
 my-package = {git = "https://github.com/user/package.git", ref = "main"}
+another-package = {git = "https://github.com/user/package.git", ref = "v1.0.0"}
+private-package = {git = "git@github.com:company/private-repo.git"}
+
+# Install from command line
+pipenv install git+https://github.com/user/package.git#egg=package
+pipenv install git+https://github.com/user/package.git@branch#egg=package
 ```
 
-### Architecture-Specific Dependencies
+### CPU Architecture Dependencies
 ```bash
-pipenv install --platform linux_x86_64 package-name
-pipenv install --platform darwin_arm64 package-name
+# Check architecture
+uname -m
+
+# Install for specific platform
+pipenv install --platform linux_x86_64 numpy
+pipenv install --platform darwin_arm64 tensorflow
+
+# In Pipfile
+[packages.linux_x86_64]
+psycopg2-binary = "*"
+
+[packages.darwin_arm64]
+psycopg2 = "*"  # Source install for ARM Mac
 ```
 
 ## Best Practices
