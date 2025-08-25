@@ -8,708 +8,306 @@
 - **Additional storage** that trades space for speed
 - **Automatic maintenance** by the database engine
 
-```sql
--- Basic index creation
-CREATE INDEX idx_user_email ON users(email);
-CREATE INDEX idx_orders_date ON orders(order_date);
-CREATE INDEX idx_products_category ON products(category_id);
-
--- Composite index (multiple columns)
-CREATE INDEX idx_orders_user_date ON orders(user_id, order_date);
-
--- Unique index
-CREATE UNIQUE INDEX idx_user_email_unique ON users(email);
-
--- Partial index (only for specific conditions)
-CREATE INDEX idx_active_users ON users(email) WHERE status = 'active';
-```
+**Core Concepts:**
+- **Index** is a separate data structure that stores sorted references to table data
+- **Index scan** allows finding specific rows without reading entire table
+- **Index selectivity** determines how effective an index is (higher selectivity = better performance)
+- **Index maintenance** includes rebuilding, updating statistics, and handling concurrent modifications
 
 **Index Types:**
-```sql
--- B-tree index (default, most common)
-CREATE INDEX idx_name ON table_name(column_name);
-
--- Hash index (equality only)
-CREATE INDEX idx_hash ON table_name USING hash(column_name);
-
--- GiST index (geometric data)
-CREATE INDEX idx_geom ON spatial_table USING gist(geometry_column);
-
--- GIN index (array/JSON data)
-CREATE INDEX idx_tags ON products USING gin(tags);
-```
+- **B-tree**: Balanced tree structure, supports equality, range queries, and sorting
+- **Hash**: Fast equality lookups only, no range support
+- **GiST**: Generalized Search Tree for geometric and custom data types
+- **GIN**: Generalized Inverted Index for arrays, JSON, and full-text search
+- **BRIN**: Block Range INdex for large tables with natural ordering
 
 ## 2. How to use indexes?
 
-```sql
--- 1. Create indexes on frequently queried columns
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_orders_status ON orders(status);
+**Index Usage Principles:**
+- **WHERE clauses**: Indexes are most effective for filtering data in WHERE conditions
+- **JOIN conditions**: Foreign key columns should be indexed for efficient joins
+- **ORDER BY**: Indexes can eliminate sorting operations when data is already ordered
+- **GROUP BY**: Indexes can optimize grouping operations
+- **Composite indexes**: Order matters - most selective column should be first
 
--- 2. Use indexes in WHERE clauses
-SELECT * FROM users WHERE email = 'john@example.com';  -- Uses index
-SELECT * FROM orders WHERE status = 'pending';         -- Uses index
+**Index Effectiveness Factors:**
+- **Selectivity**: Higher unique values = better index performance
+- **Data distribution**: Even distribution improves index efficiency
+- **Query patterns**: Indexes should match actual query conditions
+- **Column order**: In composite indexes, order affects usability
 
--- 3. Composite indexes for multiple conditions
-CREATE INDEX idx_orders_user_status ON orders(user_id, status);
-SELECT * FROM orders WHERE user_id = 123 AND status = 'pending';  -- Uses composite index
-
--- 4. Indexes for JOIN operations
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-SELECT u.name, o.order_date 
-FROM users u 
-JOIN orders o ON u.id = o.user_id;  -- Uses index on o.user_id
-
--- 5. Indexes for ORDER BY
-CREATE INDEX idx_products_price ON products(price);
-SELECT * FROM products ORDER BY price;  -- Uses index for sorting
-
--- 6. Indexes for GROUP BY
-CREATE INDEX idx_orders_date_status ON orders(order_date, status);
-SELECT order_date, COUNT(*) 
-FROM orders 
-GROUP BY order_date;  -- Uses index
-```
-
-**Index Usage Patterns:**
-```sql
--- Good: Index can be used
-SELECT * FROM users WHERE email = 'test@example.com';
-SELECT * FROM orders WHERE user_id = 123 AND status = 'pending';
-SELECT * FROM products WHERE price BETWEEN 10 AND 100;
-
--- Bad: Index cannot be used
-SELECT * FROM users WHERE LOWER(email) = 'test@example.com';  -- Function on column
-SELECT * FROM orders WHERE user_id + 1 = 124;                 -- Expression on column
-SELECT * FROM products WHERE name LIKE '%test%';              -- Leading wildcard
-```
+**Common Index Patterns:**
+- **Single column**: For simple equality and range queries
+- **Composite**: For multi-condition queries, order by selectivity
+- **Partial**: For filtered subsets of data
+- **Functional**: For computed columns or expressions
+- **Covering**: Include all needed columns to avoid table lookups
 
 ## 3. Which kind of columns must be indexed?
 
-### **Primary Keys and Foreign Keys**
-```sql
--- Primary keys are automatically indexed
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,  -- Automatically indexed
-    email VARCHAR(255)
-);
+**Must Index:**
+- **Primary Keys**: Automatically indexed, essential for uniqueness and joins
+- **Foreign Keys**: Critical for join performance, should always be indexed
+- **Frequently filtered columns**: Columns used in WHERE clauses with high selectivity
+- **Join columns**: Any column used in JOIN conditions
+- **Sort columns**: Columns used in ORDER BY clauses
+- **Search columns**: Columns used for text search or pattern matching
 
--- Foreign keys should be indexed
-CREATE TABLE orders (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id)  -- Should be indexed
-);
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-```
+**Should Consider Indexing:**
+- **Date/time columns**: Often used for range queries and filtering
+- **Status/enum columns**: If used frequently in WHERE clauses
+- **Numeric columns**: Used in range queries or aggregations
+- **Composite columns**: When multiple columns are frequently used together
 
-### **Frequently Queried Columns**
-```sql
--- Columns used in WHERE clauses
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_status ON users(status);
-CREATE INDEX idx_orders_date ON orders(order_date);
+**Avoid Indexing:**
+- **Low cardinality columns**: Columns with few unique values (gender, status with 2-3 values)
+- **Rarely queried columns**: Columns that are seldom used in WHERE clauses
+- **Frequently updated columns**: High update frequency reduces index effectiveness
+- **Large text columns**: Unless using specialized indexes (GIN, GiST)
+- **Computed columns**: Unless the computation is deterministic and indexed
 
--- Columns used in JOIN conditions
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);
-```
-
-### **Columns Used for Sorting**
-```sql
--- Columns in ORDER BY
-CREATE INDEX idx_products_price ON products(price);
-CREATE INDEX idx_orders_date ON orders(order_date DESC);
-
--- Composite index for multiple sort columns
-CREATE INDEX idx_orders_date_status ON orders(order_date, status);
-```
-
-### **Columns Used for Filtering**
-```sql
--- Boolean columns
-CREATE INDEX idx_users_active ON users(active);
-
--- Date columns
-CREATE INDEX idx_orders_created_at ON orders(created_at);
-
--- Status columns
-CREATE INDEX idx_orders_status ON orders(status);
-```
-
-### **Columns NOT to Index**
-```sql
--- Low cardinality columns (few unique values)
--- CREATE INDEX idx_users_gender ON users(gender);  -- Bad: only 2-3 values
-
--- Rarely queried columns
--- CREATE INDEX idx_users_middle_name ON users(middle_name);  -- Bad: rarely used
-
--- Columns with functions/expressions
--- CREATE INDEX idx_users_email_lower ON users(LOWER(email));  -- Bad: function
-```
+**Index Selection Criteria:**
+- **Query frequency**: How often the column is used in queries
+- **Selectivity**: Ratio of unique values to total rows
+- **Update frequency**: How often the column is modified
+- **Storage cost**: Size of the index relative to table size
 
 ## 4. Why can't index everything?
 
-### **Storage Overhead**
-```sql
--- Each index requires additional storage
--- Example: 1M rows table
--- Data: 100MB
--- Index on email: 20MB
--- Index on name: 15MB
--- Index on created_at: 10MB
--- Total overhead: 45MB (45% increase)
-```
+**Storage Overhead:**
+- **Space consumption**: Each index requires additional disk space proportional to table size
+- **Memory usage**: Indexes consume buffer cache memory, reducing space for data
+- **Growth factor**: Multiple indexes can increase total storage by 50-200%
 
-### **Write Performance Impact**
-```sql
--- Every INSERT/UPDATE/DELETE must update indexes
--- Without indexes: 1 write operation
--- With 5 indexes: 6 write operations (1 data + 5 indexes)
+**Write Performance Impact:**
+- **Insert overhead**: Every INSERT must update all indexes (O(log n) per index)
+- **Update overhead**: UPDATE operations may require index maintenance
+- **Delete overhead**: DELETE operations must clean up index entries
+- **Concurrency**: Index updates can cause lock contention
 
--- Example: Inserting 10,000 rows
--- No indexes: 10,000 operations
--- 5 indexes: 60,000 operations (6x slower)
-```
+**Maintenance Overhead:**
+- **Statistics updates**: Database must maintain index statistics for query planning
+- **Rebuilding**: Indexes may need periodic rebuilding for optimal performance
+- **Fragmentation**: Indexes can become fragmented over time
+- **Query planning complexity**: More indexes = more complex query optimization
 
-### **Maintenance Overhead**
-```sql
--- Indexes need maintenance (rebuilding, statistics updates)
--- More indexes = more maintenance time
--- More indexes = more complex query planning
-```
+**Performance Trade-offs:**
+- **Read vs Write**: Indexes improve read performance but degrade write performance
+- **Memory vs Disk**: Indexes consume memory that could be used for data caching
+- **Maintenance vs Performance**: More indexes require more maintenance overhead
 
-### **Memory Usage**
-```sql
--- Indexes consume buffer cache memory
--- More indexes = less memory for data
--- Can lead to more disk I/O
-```
-
-**Index Cost Analysis:**
-```sql
--- Calculate index size
-SELECT 
-    schemaname,
-    tablename,
-    indexname,
-    pg_size_pretty(pg_relation_size(indexrelid)) as index_size
-FROM pg_stat_user_indexes
-ORDER BY pg_relation_size(indexrelid) DESC;
-
--- Check index usage
-SELECT 
-    schemaname,
-    tablename,
-    indexname,
-    idx_scan as index_scans,
-    idx_tup_read as tuples_read,
-    idx_tup_fetch as tuples_fetched
-FROM pg_stat_user_indexes
-WHERE idx_scan = 0;  -- Unused indexes
-```
+**Optimal Index Count:**
+- **General rule**: 3-5 indexes per table for most applications
+- **Large tables**: May benefit from more specialized indexes
+- **OLTP systems**: Fewer indexes due to high write frequency
+- **OLAP systems**: More indexes acceptable due to read-heavy workloads
 
 ## 5. Wisdom `SELECT`
 
-### **Select Only Needed Columns**
-```sql
--- Bad: Select all columns
-SELECT * FROM users WHERE email = 'test@example.com';
+**Column Selection Principles:**
+- **Select only needed columns**: Avoid SELECT * to reduce data transfer and memory usage
+- **Consider column order**: Most frequently accessed columns first
+- **Use aliases**: Improve readability and reduce typing
+- **Avoid computed columns**: Unless necessary, compute in application layer
 
--- Good: Select only needed columns
-SELECT id, name, email FROM users WHERE email = 'test@example.com';
-```
+**Result Set Management:**
+- **Use LIMIT**: Always limit large result sets to prevent memory issues
+- **Pagination**: Implement proper pagination for large datasets
+- **Streaming**: For very large results, consider streaming approaches
+- **Caching**: Cache frequently accessed, rarely changing data
 
-### **Use LIMIT for Large Results**
-```sql
--- Bad: No limit
-SELECT * FROM orders WHERE user_id = 123;
+**Query Optimization Techniques:**
+- **Avoid DISTINCT**: Use GROUP BY or unique constraints instead
+- **Use EXISTS over IN**: EXISTS stops at first match, IN loads all results
+- **Approximate counts**: Use statistics for large table counts
+- **Index hints**: Use query hints when optimizer makes poor choices
 
--- Good: With limit
-SELECT * FROM orders WHERE user_id = 123 ORDER BY created_at DESC LIMIT 10;
-```
-
-### **Avoid SELECT DISTINCT When Possible**
-```sql
--- Bad: DISTINCT on large datasets
-SELECT DISTINCT category FROM products;
-
--- Good: Use GROUP BY
-SELECT category FROM products GROUP BY category;
-
--- Better: If you have an index
-SELECT category FROM products WHERE category IS NOT NULL;
-```
-
-### **Use EXISTS Instead of IN for Large Subqueries**
-```sql
--- Bad: IN with large subquery
-SELECT * FROM users WHERE id IN (SELECT user_id FROM orders WHERE status = 'completed');
-
--- Good: EXISTS
-SELECT * FROM users u WHERE EXISTS (
-    SELECT 1 FROM orders o WHERE o.user_id = u.id AND o.status = 'completed'
-);
-```
-
-### **Avoid SELECT COUNT(*) on Large Tables**
-```sql
--- Bad: COUNT(*) on large table
-SELECT COUNT(*) FROM orders;
-
--- Good: Use approximate count or cached count
-SELECT reltuples::bigint AS estimate FROM pg_class WHERE relname = 'orders';
-
--- Better: Maintain count in separate table
-SELECT total_orders FROM order_stats;
-```
+**Performance Considerations:**
+- **Network transfer**: Minimize data transferred between database and application
+- **Memory usage**: Large result sets consume application memory
+- **Processing time**: More columns = more processing overhead
+- **Index efficiency**: Selectivity affects index usage effectiveness
 
 ## 6. Subqueries performance
 
-### **Correlated vs Non-Correlated Subqueries**
-```sql
--- Bad: Correlated subquery (executes for each row)
-SELECT u.name, (
-    SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id
-) as order_count
-FROM users u;
+**Correlated vs Non-Correlated Subqueries:**
+- **Correlated subqueries**: Reference outer query columns, execute for each row (O(n²) complexity)
+- **Non-correlated subqueries**: Independent of outer query, execute once (O(n) complexity)
+- **Performance impact**: Correlated subqueries can be 10-1000x slower than alternatives
 
--- Good: JOIN with GROUP BY
-SELECT u.name, COUNT(o.id) as order_count
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id
-GROUP BY u.id, u.name;
+**Subquery Optimization Strategies:**
+- **JOIN with GROUP BY**: Replace correlated subqueries with joins and aggregations
+- **Window functions**: Use OVER clause for row-by-row calculations
+- **EXISTS over IN**: EXISTS stops at first match, IN loads all results into memory
+- **CTEs (Common Table Expressions)**: Break complex queries into readable, reusable parts
 
--- Better: Use window function
-SELECT u.name, COUNT(o.id) OVER (PARTITION BY u.id) as order_count
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id;
-```
+**Performance Characteristics:**
+- **Correlated subqueries**: Execute N times (where N = outer query rows)
+- **JOIN approach**: Single pass through data with proper indexing
+- **Window functions**: Single pass with partitioning
+- **EXISTS**: Stops at first match, optimal for large datasets
 
-### **Subquery Optimization Techniques**
-```sql
--- Bad: Subquery in WHERE
-SELECT * FROM users WHERE id IN (
-    SELECT user_id FROM orders WHERE amount > 1000
-);
-
--- Good: JOIN
-SELECT DISTINCT u.* 
-FROM users u
-JOIN orders o ON u.id = o.user_id
-WHERE o.amount > 1000;
-
--- Better: EXISTS
-SELECT * FROM users u WHERE EXISTS (
-    SELECT 1 FROM orders o WHERE o.user_id = u.id AND o.amount > 1000
-);
-```
-
-### **Common Table Expressions (CTEs)**
-```sql
--- Good: Use CTEs for complex queries
-WITH user_orders AS (
-    SELECT user_id, COUNT(*) as order_count, SUM(amount) as total_amount
-    FROM orders
-    WHERE created_at >= '2024-01-01'
-    GROUP BY user_id
-),
-active_users AS (
-    SELECT * FROM users WHERE status = 'active'
-)
-SELECT u.name, uo.order_count, uo.total_amount
-FROM active_users u
-JOIN user_orders uo ON u.id = uo.user_id
-WHERE uo.order_count > 5;
-```
+**Best Practices:**
+- **Avoid correlated subqueries** in SELECT clause
+- **Use appropriate join types** (INNER, LEFT, RIGHT) based on data requirements
+- **Consider query plan** when choosing between alternatives
+- **Test with real data volumes** to validate performance improvements
 
 ## 7. Analyze queries with `EXPLAIN`
 
-### **Basic EXPLAIN**
-```sql
--- Simple EXPLAIN
-EXPLAIN SELECT * FROM users WHERE email = 'test@example.com';
+**EXPLAIN Command Types:**
+- **EXPLAIN**: Shows query plan without execution
+- **EXPLAIN ANALYZE**: Shows plan with actual execution statistics
+- **EXPLAIN BUFFERS**: Shows memory usage information
+- **EXPLAIN FORMAT**: Output in different formats (TEXT, JSON, XML)
 
--- EXPLAIN with actual execution
-EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM users WHERE email = 'test@example.com';
+**Key Metrics to Analyze:**
+- **Planning time**: Time spent creating execution plan
+- **Execution time**: Actual query execution time
+- **Rows**: Number of rows processed at each step
+- **Loops**: Number of times each operation was performed
+- **Buffers**: Memory usage (shared, read, written, temp)
 
--- EXPLAIN with format
-EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM users WHERE email = 'test@example.com';
-```
+**Common Execution Plans:**
+- **Sequential Scan**: Reads entire table (slow for large tables)
+- **Index Scan**: Uses index to find specific rows (fast)
+- **Index Only Scan**: Uses index without table access (fastest)
+- **Nested Loop**: For small datasets, joins row by row
+- **Hash Join**: For larger datasets, builds hash table
+- **Merge Join**: For sorted data, merges sorted streams
 
-### **Understanding EXPLAIN Output**
-```sql
--- Example EXPLAIN output analysis
-EXPLAIN (ANALYZE, BUFFERS) 
-SELECT u.name, COUNT(o.id) as order_count
-FROM users u
-JOIN orders o ON u.id = o.user_id
-WHERE u.status = 'active'
-GROUP BY u.id, u.name;
-
--- Key metrics to look for:
--- - Planning time: Time to create execution plan
--- - Execution time: Time to execute the query
--- - Rows: Number of rows processed
--- - Loops: Number of times operation was performed
--- - Buffers: Memory usage
-```
-
-### **Common Performance Issues in EXPLAIN**
-```sql
--- Sequential scan (bad)
-EXPLAIN SELECT * FROM users WHERE name LIKE '%john%';
--- Shows: "Seq Scan on users"
-
--- Index scan (good)
-EXPLAIN SELECT * FROM users WHERE email = 'john@example.com';
--- Shows: "Index Scan using idx_users_email"
-
--- Nested loop (can be slow for large datasets)
-EXPLAIN SELECT u.name, o.order_date
-FROM users u
-JOIN orders o ON u.id = o.user_id;
--- Shows: "Nested Loop"
-
--- Hash join (better for large datasets)
-EXPLAIN SELECT u.name, o.order_date
-FROM users u
-JOIN orders o ON u.id = o.user_id
-WHERE u.status = 'active';
--- Shows: "Hash Join"
-```
+**Performance Red Flags:**
+- **Sequential scans** on large tables without WHERE conditions
+- **High loop counts** indicating inefficient joins
+- **Large buffer usage** suggesting memory pressure
+- **Temporary files** indicating insufficient memory
+- **Poor row estimates** indicating outdated statistics
 
 ## 8. Bulk insert
 
-### **Single INSERT vs Bulk INSERT**
-```sql
--- Bad: Multiple single inserts
-INSERT INTO users (name, email) VALUES ('John', 'john@example.com');
-INSERT INTO users (name, email) VALUES ('Jane', 'jane@example.com');
-INSERT INTO users (name, email) VALUES ('Bob', 'bob@example.com');
+**Bulk Insert Methods:**
+- **Multi-row INSERT**: Insert multiple rows in single statement (10-100x faster than single inserts)
+- **COPY command**: Fastest method for large datasets, bypasses SQL parser
+- **Batch processing**: Group inserts into transactions for optimal performance
+- **External tools**: Use database-specific tools (pg_bulkload, mysqlimport)
 
--- Good: Bulk insert
-INSERT INTO users (name, email) VALUES 
-    ('John', 'john@example.com'),
-    ('Jane', 'jane@example.com'),
-    ('Bob', 'bob@example.com');
-```
+**Performance Optimization:**
+- **Batch size**: Optimal 1000-10000 rows per batch (depends on row size and memory)
+- **Transaction size**: Balance between memory usage and commit overhead
+- **Index management**: Disable indexes during bulk load, rebuild after
+- **Constraint handling**: Disable foreign keys and triggers during bulk operations
 
-### **COPY Command (PostgreSQL)**
-```sql
--- Fastest: COPY command
-COPY users (name, email) FROM '/path/to/data.csv' WITH (FORMAT csv);
+**Memory and Resource Considerations:**
+- **Buffer size**: Adjust work_mem for large bulk operations
+- **WAL (Write-Ahead Log)**: Bulk operations generate significant WAL traffic
+- **Checkpoint frequency**: May need to adjust checkpoint settings
+- **Disk I/O**: Sequential writes are much faster than random writes
 
--- COPY from program
-COPY users (name, email) FROM PROGRAM 'cat /path/to/data.csv';
-
--- COPY with options
-COPY users (name, email) FROM '/path/to/data.csv' 
-WITH (FORMAT csv, HEADER true, DELIMITER ',');
-```
-
-### **Batch Processing**
-```sql
--- Batch insert with transaction
-BEGIN;
-INSERT INTO users (name, email) VALUES 
-    ('User1', 'user1@example.com'),
-    ('User2', 'user2@example.com'),
-    -- ... more rows
-    ('User1000', 'user1000@example.com');
-COMMIT;
-
--- Batch size optimization
--- Too small: Many transactions
--- Too large: Memory issues
--- Optimal: 1000-10000 rows per batch
-```
-
-### **Disable Indexes During Bulk Insert**
-```sql
--- Disable indexes temporarily
-ALTER TABLE users DISABLE TRIGGER ALL;
--- or
-DROP INDEX idx_users_email;
--- ... bulk insert ...
--- Re-enable indexes
-ALTER TABLE users ENABLE TRIGGER ALL;
--- or
-CREATE INDEX idx_users_email ON users(email);
-```
+**Best Practices:**
+- **Use COPY for large datasets** (>10,000 rows)
+- **Batch appropriately** to balance memory and performance
+- **Disable unnecessary constraints** during bulk load
+- **Monitor system resources** during bulk operations
+- **Plan for recovery** in case of bulk operation failure
 
 ## 9. VACUUM
 
-### **What is VACUUM?**
-```sql
--- VACUUM reclaims storage from dead tuples
--- Dead tuples: rows that are deleted or updated
+**What is VACUUM:**
+- **Purpose**: Reclaims storage from dead tuples (deleted/updated rows) and updates statistics
+- **MVCC mechanism**: PostgreSQL uses Multi-Version Concurrency Control, keeping old versions for transaction isolation
+- **Dead tuples**: Rows marked as deleted but not physically removed from disk
+- **Statistics**: Query planner relies on table statistics for optimal execution plans
 
--- Basic VACUUM
-VACUUM users;
+**VACUUM Types:**
+- **VACUUM**: Reclaims space, doesn't block reads/writes, doesn't update statistics
+- **VACUUM ANALYZE**: Reclaims space and updates statistics for query planning
+- **VACUUM FULL**: Rewrites entire table, blocks all access, maximum space reclamation
+- **Auto VACUUM**: Automatic background process that runs VACUUM and ANALYZE
 
--- VACUUM ANALYZE (updates statistics too)
-VACUUM ANALYZE users;
+**When to Use VACUUM:**
+- **After large DELETE operations**: Reclaim space from deleted rows
+- **After large UPDATE operations**: Clean up old row versions
+- **Regular maintenance**: Weekly VACUUM ANALYZE on active tables
+- **Performance degradation**: When queries slow down due to table bloat
+- **Storage pressure**: When disk space becomes limited
 
--- VACUUM FULL (rewrites entire table)
-VACUUM FULL users;
+**VACUUM Configuration:**
+- **autovacuum_vacuum_threshold**: Minimum dead tuples before auto VACUUM (default: 50)
+- **autovacuum_vacuum_scale_factor**: Percentage of live tuples (default: 0.2)
+- **autovacuum_analyze_threshold**: Minimum dead tuples before auto ANALYZE (default: 50)
+- **autovacuum_analyze_scale_factor**: Percentage for auto ANALYZE (default: 0.1)
 
--- Auto VACUUM (automatic)
--- Configured in postgresql.conf
-autovacuum = on
-autovacuum_vacuum_threshold = 50
-autovacuum_analyze_threshold = 50
-```
-
-### **When to Use VACUUM**
-```sql
--- After large DELETE operations
-DELETE FROM old_logs WHERE created_at < '2023-01-01';
-VACUUM logs;
-
--- After large UPDATE operations
-UPDATE users SET status = 'inactive' WHERE last_login < '2023-01-01';
-VACUUM users;
-
--- Regular maintenance
--- Run VACUUM ANALYZE weekly on active tables
-VACUUM ANALYZE users, orders, products;
-```
-
-### **VACUUM Monitoring**
-```sql
--- Check table bloat
-SELECT 
-    schemaname,
-    tablename,
-    n_dead_tup,
-    n_live_tup,
-    round(n_dead_tup * 100.0 / nullif(n_live_tup + n_dead_tup, 0), 2) as dead_percentage
-FROM pg_stat_user_tables
-WHERE n_dead_tup > 0
-ORDER BY dead_percentage DESC;
-
--- Check last VACUUM
-SELECT 
-    schemaname,
-    tablename,
-    last_vacuum,
-    last_autovacuum,
-    vacuum_count,
-    autovacuum_count
-FROM pg_stat_user_tables;
-```
+**Performance Impact:**
+- **VACUUM**: Minimal impact, can run concurrently with normal operations
+- **VACUUM ANALYZE**: Slight performance impact, updates query statistics
+- **VACUUM FULL**: Significant impact, blocks all access to table
+- **Auto VACUUM**: Background process, minimal user impact
 
 ## 10. Calculations balance
 
-### **What to Execute at DB Level?**
+**Database vs Application Level Processing:**
 
-**Good for DB Level:**
-```sql
--- Aggregations
-SELECT user_id, COUNT(*), SUM(amount), AVG(amount)
-FROM orders
-GROUP BY user_id;
+**Database Level (Good for):**
+- **Aggregations**: COUNT, SUM, AVG, MIN, MAX, GROUP BY operations
+- **Simple mathematical operations**: Addition, subtraction, multiplication, division
+- **Date/time calculations**: Date arithmetic, extraction of date parts
+- **String operations**: Concatenation, substring, case conversion
+- **Conditional logic**: CASE statements, simple IF-THEN-ELSE logic
+- **Set operations**: UNION, INTERSECT, EXCEPT
+- **Window functions**: Row numbering, running totals, moving averages
 
--- Mathematical calculations
-SELECT 
-    product_id,
-    price,
-    discount,
-    price * (1 - discount/100) as final_price
-FROM products;
+**Application Level (Good for):**
+- **Complex business logic**: Multi-step calculations with conditional branching
+- **External integrations**: API calls, third-party service interactions
+- **File operations**: Reading/writing files, image processing
+- **Complex algorithms**: Machine learning, recommendation engines, scoring systems
+- **Data transformations**: Complex data formatting, validation rules
+- **User interface logic**: Presentation formatting, user interaction handling
 
--- Date calculations
-SELECT 
-    order_date,
-    order_date + INTERVAL '30 days' as due_date,
-    EXTRACT(YEAR FROM order_date) as order_year
-FROM orders;
+**Decision Factors:**
+- **Performance**: Database operations are optimized for data processing
+- **Scalability**: Database can handle large datasets more efficiently
+- **Maintainability**: Business logic in application is easier to test and modify
+- **Network overhead**: Minimize data transfer between database and application
+- **Resource utilization**: Balance CPU usage between database and application servers
 
--- String operations
-SELECT 
-    name,
-    UPPER(name) as upper_name,
-    LENGTH(name) as name_length
-FROM users;
-
--- Conditional logic
-SELECT 
-    amount,
-    CASE 
-        WHEN amount > 1000 THEN 'high'
-        WHEN amount > 100 THEN 'medium'
-        ELSE 'low'
-    END as amount_category
-FROM orders;
-```
-
-**Bad for DB Level:**
-```sql
--- Complex business logic
--- Complex data transformations
--- External API calls
--- File operations
--- Complex algorithms
-```
-
-### **What Calculations Move to Programming Language Level?**
-
-**Good for Application Level:**
-```python
-# Complex business logic
-def calculate_tax(amount, country, user_type):
-    if country == 'US':
-        if user_type == 'business':
-            return amount * 0.08
-        else:
-            return amount * 0.06
-    elif country == 'CA':
-        return amount * 0.13
-    # ... complex logic
-
-# Data transformations
-def transform_user_data(user_data):
-    return {
-        'full_name': f"{user_data['first_name']} {user_data['last_name']}",
-        'age': calculate_age(user_data['birth_date']),
-        'address': format_address(user_data['address_components'])
-    }
-
-# External integrations
-def enrich_user_data(user_id):
-    user = get_user_from_db(user_id)
-    user['credit_score'] = call_credit_api(user_id)
-    user['social_media'] = get_social_media_data(user_id)
-    return user
-
-# Complex algorithms
-def recommend_products(user_id, user_behavior):
-    # Machine learning algorithms
-    # Complex scoring systems
-    # Recommendation engines
-    pass
-```
+**Best Practices:**
+- **Push filtering to database**: Use WHERE clauses to reduce data transfer
+- **Aggregate in database**: Use GROUP BY and window functions
+- **Keep business logic in application**: Complex rules belong in application code
+- **Use stored procedures sparingly**: Only for performance-critical, database-specific operations
+- **Consider data volume**: Large datasets benefit from database processing
 
 ## 11. MATERIALIZED VIEWS
 
-### **What are Materialized Views?**
-```sql
--- Materialized views store query results physically
--- Unlike regular views, they don't recalculate on each access
+**What are Materialized Views:**
+- **Definition**: Physical storage of query results, unlike regular views that are virtual
+- **Purpose**: Pre-compute expensive queries and store results for fast access
+- **Storage**: Materialized views consume disk space proportional to result set size
+- **Refresh**: Must be manually or automatically refreshed to reflect data changes
 
--- Create materialized view
-CREATE MATERIALIZED VIEW user_order_summary AS
-SELECT 
-    u.id,
-    u.name,
-    COUNT(o.id) as order_count,
-    SUM(o.amount) as total_amount,
-    AVG(o.amount) as avg_amount
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id
-GROUP BY u.id, u.name;
+**When to Use Materialized Views:**
+- **Expensive aggregations**: Complex GROUP BY operations with large datasets
+- **Frequently accessed data**: Queries that are run often but don't need real-time data
+- **Complex joins**: Multi-table joins that are computationally expensive
+- **Reporting queries**: Dashboards and reports that can tolerate slightly stale data
+- **Data warehousing**: Pre-computed summaries for analytical queries
 
--- Query materialized view
-SELECT * FROM user_order_summary WHERE order_count > 5;
-```
+**Refresh Strategies:**
+- **Manual refresh**: Explicit REFRESH command when needed
+- **Scheduled refresh**: Automated refresh using cron jobs or schedulers
+- **Concurrent refresh**: REFRESH CONCURRENTLY allows reads during refresh
+- **Incremental refresh**: Refresh only changed portions (requires careful design)
 
-### **When to Use Materialized Views**
-```sql
--- Expensive aggregations
-CREATE MATERIALIZED VIEW daily_sales AS
-SELECT 
-    DATE(created_at) as sale_date,
-    COUNT(*) as total_orders,
-    SUM(amount) as total_revenue,
-    AVG(amount) as avg_order_value
-FROM orders
-GROUP BY DATE(created_at);
+**Performance Considerations:**
+- **Storage cost**: Materialized views consume disk space
+- **Refresh overhead**: Full refresh can be expensive for large views
+- **Data freshness**: Balance between performance and data currency
+- **Index optimization**: Create indexes on materialized views for better query performance
 
--- Complex joins
-CREATE MATERIALIZED VIEW product_performance AS
-SELECT 
-    p.id,
-    p.name,
-    p.category,
-    COUNT(oi.id) as times_ordered,
-    SUM(oi.quantity) as total_quantity,
-    AVG(oi.price) as avg_price
-FROM products p
-LEFT JOIN order_items oi ON p.id = oi.product_id
-LEFT JOIN orders o ON oi.order_id = o.id
-WHERE o.status = 'completed'
-GROUP BY p.id, p.name, p.category;
-```
-
-### **Refreshing Materialized Views**
-```sql
--- Manual refresh
-REFRESH MATERIALIZED VIEW user_order_summary;
-
--- Concurrent refresh (PostgreSQL 9.4+)
-REFRESH MATERIALIZED VIEW CONCURRENTLY user_order_summary;
-
--- Scheduled refresh
--- Use cron job or application scheduler
--- Example: Refresh daily at 2 AM
--- 0 2 * * * psql -d mydb -c "REFRESH MATERIALIZED VIEW daily_sales;"
-```
-
-### **Materialized View vs Regular View**
-```sql
--- Regular view (virtual)
-CREATE VIEW user_order_summary AS
-SELECT 
-    u.id,
-    u.name,
-    COUNT(o.id) as order_count,
-    SUM(o.amount) as total_amount
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id
-GROUP BY u.id, u.name;
-
--- Materialized view (physical)
-CREATE MATERIALIZED VIEW user_order_summary_mv AS
-SELECT 
-    u.id,
-    u.name,
-    COUNT(o.id) as order_count,
-    SUM(o.amount) as total_amount
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id
-GROUP BY u.id, u.name;
-
--- Performance comparison
--- Regular view: Recalculates every time (slow)
--- Materialized view: Stored result (fast, but needs refresh)
-```
-
-### **Indexes on Materialized Views**
-```sql
--- Create indexes on materialized views for better performance
-CREATE INDEX idx_user_order_summary_id ON user_order_summary(id);
-CREATE INDEX idx_user_order_summary_count ON user_order_summary(order_count);
-
--- Query with index
-SELECT * FROM user_order_summary WHERE order_count > 10;
-```
-
-### **Best Practices for Materialized Views**
-```sql
--- Use for expensive, frequently-accessed queries
--- Refresh regularly based on data freshness requirements
--- Monitor storage usage (materialized views take space)
--- Consider partitioning for large materialized views
--- Use concurrent refresh to avoid blocking reads
-
--- Example: Partitioned materialized view
-CREATE MATERIALIZED VIEW monthly_sales_2024 AS
-SELECT 
-    DATE_TRUNC('month', created_at) as month,
-    COUNT(*) as orders,
-    SUM(amount) as revenue
-FROM orders
-WHERE created_at >= '2024-01-01' AND created_at < '2025-01-01'
-GROUP BY DATE_TRUNC('month', created_at);
-```
+**Best Practices:**
+- **Choose refresh frequency** based on data freshness requirements
+- **Monitor storage usage** and clean up unused materialized views
+- **Use partitioning** for large materialized views to improve refresh performance
+- **Consider incremental updates** for frequently changing data
+- **Test refresh performance** before implementing in production
