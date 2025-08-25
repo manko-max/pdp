@@ -1,0 +1,97 @@
+# Use bash with strict mode
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+
+default:
+	@just --list
+
+# Docker commands
+build:
+	echo "Building Docker images..."
+	docker compose build
+
+up:
+	echo "Starting services..."
+	docker compose up -d
+
+down:
+	echo "Stopping services..."
+	docker compose down
+
+restart:
+	echo "Restarting services..."
+	docker compose restart
+
+logs:
+	echo "Showing logs..."
+	docker compose logs -f
+
+clean:
+	echo "Cleaning Docker resources..."
+	docker compose down -v --remove-orphans
+	docker system prune -f
+
+# Database commands
+backup:
+	echo "Creating MongoDB backup..."
+	./scripts/backup.sh
+
+restore BACKUP_PATH:
+	echo "Restoring MongoDB from backup: {{BACKUP_PATH}}"
+	./scripts/restore.sh {{BACKUP_PATH}}
+
+# Development commands
+test:
+	echo "Running tests..."
+	docker compose exec web poetry run pytest
+
+format:
+	echo "Formatting code..."
+	docker compose exec web poetry run black .
+
+lint:
+	echo "Running lint..."
+	docker compose exec web poetry run flake8 .
+
+type-check:
+	echo "Running type checks..."
+	docker compose exec web poetry run mypy .
+
+# Setup and deps
+setup:
+	echo "Setting up project..."
+	if [ ! -f .env ]; then cp env.example .env && echo "Created .env from env.example"; else echo ".env already exists"; fi
+	echo "Done."
+
+poetry-install:
+	cd app && poetry install
+
+# Health check
+health:
+	echo "Checking health..."
+	curl -fsS http://localhost:5000/health || echo "Web not healthy"
+	curl -fsS http://localhost:8081 || echo "Mongo Express not accessible"
+
+# Workflows
+dev:
+	just setup
+	just build
+	just up
+	echo "Dev ready: API http://localhost:5000, ME http://localhost:8081"
+
+prod:
+	just setup
+	docker compose -f docker-compose.yml up -d
+	echo "Prod-like ready."
+
+dev-cycle:
+	just format
+	just lint
+	just type-check
+	just test
+
+status:
+	echo "Service status:"
+	docker compose ps
+	echo
+	echo "Resource usage:"
+	docker stats --no-stream --format "table {.Container}\t{.CPUPerc}\t{.MemUsage}\t{.NetIO}"
