@@ -39,6 +39,18 @@ class Settings(BaseSettings):
     default_page_size: int = Field(default=10, env="DEFAULT_PAGE_SIZE", description="Default page size")
     max_page_size: int = Field(default=100, env="MAX_PAGE_SIZE", description="Maximum page size")
     
+    # MongoDB Express (for compatibility)
+    mongo_express_username: str = Field(default="admin", env="MONGO_EXPRESS_USERNAME", description="Mongo Express username")
+    mongo_express_password: str = Field(default="express_password_123", env="MONGO_EXPRESS_PASSWORD", description="Mongo Express password")
+    
+    # MongoDB Root (for compatibility)
+    mongo_root_username: str = Field(default="admin", env="MONGO_ROOT_USERNAME", description="MongoDB root username")
+    mongo_root_password: str = Field(default="secure_password_123", env="MONGO_ROOT_PASSWORD", description="MongoDB root password")
+    mongo_database: str = Field(default="userdb", env="MONGO_DATABASE", description="MongoDB database name")
+    
+    # CORS (for compatibility)
+    cors_origins: str = Field(default="*", env="CORS_ORIGINS", description="CORS origins")
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

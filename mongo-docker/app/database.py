@@ -6,9 +6,6 @@ import asyncio
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from .config import settings
-import structlog
-
-logger = structlog.get_logger()
 
 
 class Database:
@@ -31,20 +28,20 @@ class Database:
             
             # Test connection
             await self.client.admin.command('ping')
-            logger.info("Connected to MongoDB")
+            print("Connected to MongoDB")
             
             # Create indexes
             await self._create_indexes()
             
         except Exception as e:
-            logger.error("Failed to connect to MongoDB", error=str(e))
+            print(f"Failed to connect to MongoDB: {e}")
             raise
     
     async def disconnect(self):
         """Disconnect from MongoDB."""
         if self.client:
             self.client.close()
-            logger.info("Disconnected from MongoDB")
+            print("Disconnected from MongoDB")
     
     async def _create_indexes(self):
         """Create database indexes."""
@@ -59,9 +56,9 @@ class Database:
             await self.db.sessions.create_index("user_id", 1)
             await self.db.sessions.create_index("expires_at", 1)
             
-            logger.info("Database indexes created")
+            print("Database indexes created")
         except Exception as e:
-            logger.warning("Failed to create indexes", error=str(e))
+            print(f"Failed to create indexes: {e}")
 
 
 # Global database instance

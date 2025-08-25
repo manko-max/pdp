@@ -1,7 +1,7 @@
 services:
   # Web Application
   web:
-    build: ./app
+    build: .
     ports:
       - "5000:5000"
     environment:
@@ -19,7 +19,7 @@ services:
       - MONGODB_MIN_POOL_SIZE=${MONGODB_MIN_POOL_SIZE}
       - MONGODB_MAX_IDLE_TIME_MS=${MONGODB_MAX_IDLE_TIME_MS}
     volumes:
-      - ./app:/app
+      - .:/app
       - web_logs:/app/logs
     depends_on:
       mongodb:

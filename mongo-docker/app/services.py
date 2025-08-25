@@ -7,12 +7,9 @@ from typing import List, Optional, Dict, Any, Annotated
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 from fastapi import Depends
-import structlog
 
 from .models import UserCreate, UserUpdate, User, PaginationInfo
 from .database import get_database
-
-logger = structlog.get_logger()
 
 
 class UserService:
@@ -33,7 +30,7 @@ class UserService:
         result = await self.collection.insert_one(user_dict)
         user_dict["_id"] = str(result.inserted_id)
         
-        logger.info("User created", user_id=user_dict["_id"], email=user_dict["email"])
+        print(f"User created: {user_dict['_id']}, email: {user_dict['email']}")
         return User(**user_dict)
     
     async def get_user_by_id(self, user_id: str) -> Optional[User]:
@@ -69,7 +66,7 @@ class UserService:
         )
         
         if result.modified_count:
-            logger.info("User updated", user_id=user_id)
+            print(f"User updated: {user_id}")
             return await self.get_user_by_id(user_id)
         return None
     
@@ -77,7 +74,7 @@ class UserService:
         """Delete user."""
         result = await self.collection.delete_one({"_id": ObjectId(user_id)})
         if result.deleted_count:
-            logger.info("User deleted", user_id=user_id)
+            print(f"User deleted: {user_id}")
             return True
         return False
     

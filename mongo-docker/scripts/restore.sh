@@ -122,13 +122,16 @@ if [[ "$BACKUP_PATH" == *.tar.gz ]]; then
     print_status "Detected compressed backup, extracting..."
     EXTRACT_DIR=$(mktemp -d)
     tar -xzf "$BACKUP_PATH" -C "$EXTRACT_DIR"
-    BACKUP_PATH="$EXTRACT_DIR"
+    # Find the actual backup directory
+    BACKUP_DIR_NAME=$(ls "$EXTRACT_DIR" | head -1)
+    BACKUP_PATH="$EXTRACT_DIR/$BACKUP_DIR_NAME"
     print_status "Extracted to: $BACKUP_PATH"
 fi
 
 # Validate backup structure
 if [ ! -d "$BACKUP_PATH/$DB_NAME" ]; then
     print_error "Invalid backup structure. Expected directory: $BACKUP_PATH/$DB_NAME"
+    print_error "Found: $(ls -la "$BACKUP_PATH" 2>/dev/null || echo 'Directory not accessible')"
     exit 1
 fi
 

@@ -35,9 +35,9 @@ backup:
 	echo "Creating MongoDB backup..."
 	./scripts/backup.sh
 
-restore BACKUP_PATH:
+restore BACKUP_PATH *ARGS:
 	echo "Restoring MongoDB from backup: {{BACKUP_PATH}}"
-	./scripts/restore.sh {{BACKUP_PATH}}
+	./scripts/restore.sh {{BACKUP_PATH}} {{ARGS}}
 
 # Development commands
 test:
@@ -63,7 +63,7 @@ setup:
 	echo "Done."
 
 poetry-install:
-	cd app && poetry install
+	poetry install
 
 # Health check
 health:

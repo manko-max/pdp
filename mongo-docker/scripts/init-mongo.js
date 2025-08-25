@@ -16,6 +16,41 @@ db.createUser({
     ]
 });
 
+// Switch back to admin database to create root user if not exists
+db = db.getSiblingDB('admin');
+
+// Create root user if not exists
+try {
+    db.createUser({
+        user: process.env.MONGO_ROOT_USERNAME || 'admin',
+        pwd: process.env.MONGO_ROOT_PASSWORD || 'secure_password_123',
+        roles: [
+            {
+                role: 'userAdminAnyDatabase',
+                db: 'admin'
+            },
+            {
+                role: 'readWriteAnyDatabase',
+                db: 'admin'
+            },
+            {
+                role: 'dbAdminAnyDatabase',
+                db: 'admin'
+            }
+        ]
+    });
+    print('Root user created successfully');
+} catch (error) {
+    if (error.code === 51003) {
+        print('Root user already exists');
+    } else {
+        print('Error creating root user: ' + error.message);
+    }
+}
+
+// Switch back to application database
+db = db.getSiblingDB(process.env.MONGO_INITDB_DATABASE || 'userdb');
+
 // Create collections with validation
 db.createCollection('users', {
     validator: {
