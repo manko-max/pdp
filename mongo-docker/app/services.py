@@ -7,10 +7,12 @@ from typing import List, Optional, Dict, Any, Annotated
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 from fastapi import Depends
+import logging
 
 from .models import UserCreate, UserUpdate, User, PaginationInfo
 from .database import get_database
 
+logger = logging.getLogger(__name__)
 
 class UserService:
     """Service for user operations."""

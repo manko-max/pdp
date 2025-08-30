@@ -12,6 +12,9 @@ RUN apt-get update \
 
 RUN pip install "poetry==$POETRY_VERSION"
 
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
 WORKDIR /app
 
 COPY ./pyproject.toml poetry.lock ./
@@ -21,6 +24,12 @@ COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
 COPY . /app
+
+# Change ownership to non-root user
+RUN chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 EXPOSE 5000
 
